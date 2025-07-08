@@ -29,8 +29,8 @@ jobs:
       id-token: write
       contents: read
     env:
-      AUDIENCE: ${{ inputs.audience || 'api.tailscale.com/kYdc3pQsoj11CNTRL' }}
-      CLIENT_ID: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/kYdc3pQsoj11CNTRL' }}
+      AUDIENCE: ${{ inputs.audience || 'api.tailscale.com/k4xgsqeDG111CNTRL' }}
+      CLIENT_ID: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/k4xgsqeDG111CNTRL' }}
       TAILNET: ${{ inputs.tailnet || '_lbr_sandbox' }}
       TAGS: ${{ inputs.tags || 'ci' }}
     steps:
@@ -97,8 +97,8 @@ jobs:
       id-token: write
       contents: read
     env:
-      AUDIENCE: ${{ inputs.audience || 'api.tailscale.com/kYdc3pQsoj11CNTRL' }}
-      CLIENT_ID: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/kYdc3pQsoj11CNTRL' }}
+      AUDIENCE: ${{ inputs.audience || 'api.tailscale.com/k4xgsqeDG111CNTRL' }}
+      CLIENT_ID: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/k4xgsqeDG111CNTRL' }}
       TAILNET: ${{ inputs.tailnet || '_lbr_sandbox' }}
       TAGS: ${{ inputs.tags || 'ci' }}
     steps:
