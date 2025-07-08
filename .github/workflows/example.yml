@@ -1,8 +1,8 @@
 name: 'Deploy with Tailscale Access'
 
 env:
-  AUDIENCE: ${{ inputs.audience || 'api.tailscale.com/k4xgsqeDG111CNTRL' }}
-  CLIENT_ID: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/k4xgsqeDG111CNTRL' }}
+  AUDIENCE: ${{ inputs.audience || 'api.tailscale.com/kVJbN7bAoj11CNTRL' }}
+  CLIENT_ID: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/kVJbN7bAoj11CNTRL' }}
   TAILNET: ${{ inputs.tailnet || '_lbr_sandbox' }}
   TAGS: ${{ inputs.tags || 'tag:ci' }}
 
