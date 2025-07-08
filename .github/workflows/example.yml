@@ -43,6 +43,13 @@ jobs:
           echo "JWT length: ${#JWT}"
           echo "JWT first 50 chars: ${JWT:0:50}..."
           echo "JWT=$JWT" >> $GITHUB_ENV
+      - name: Debug JWT Claims
+        run: |
+          echo "Decoding JWT to check claims..."
+          JWT_PAYLOAD=$(echo "$JWT" | cut -d. -f2)
+          # Add padding for base64 decode
+          JWT_PAYLOAD_PADDED=$(printf "$JWT_PAYLOAD%*s" $((4 - ${#JWT_PAYLOAD} % 4)) | tr ' ' '=')
+          echo "$JWT_PAYLOAD_PADDED" | base64 -d | jq .
 
       - name: Perform OIDC token exchange
         run: |
