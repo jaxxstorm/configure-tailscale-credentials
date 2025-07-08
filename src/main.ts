@@ -92,7 +92,7 @@ async function exchangeTokenForTailscaleToken(
 ): Promise<string> {
     const form = new URLSearchParams({
         client_id: clientId,
-        jwt: jwt  // The undocumented API uses 'jwt' not 'subject_token'
+        jwt: jwt
     })
 
     const httpClient = new http.HttpClient('configure-tailscale-credentials', undefined, {

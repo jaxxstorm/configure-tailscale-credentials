@@ -8,10 +8,10 @@ on:
   workflow_dispatch:
     inputs:
       audience:
-        description: 'Tailscale OIDC audience'
+        description: 'Tailscale OIDC audience (api.tailscale.com/YOUR_TAILNET_ID)'
         required: true
-      client-id:
-        description: 'Tailscale client ID '
+      client_id:
+        description: 'Tailscale client ID (tailnet-id/client-id)'
         required: true
       tailnet:
         description: 'Tailnet name'
@@ -22,37 +22,88 @@ on:
         default: 'ci'
 
 jobs:
-  deploy:
+  # Test the raw OIDC flow first (like the example you provided)
+  test-oidc-flow:
     runs-on: ubuntu-latest
-    
-    # Required for OIDC token generation
     permissions:
       id-token: write
       contents: read
-    
+    steps:
+      - name: Get OIDC token from GitHub Actions
+        run: |
+          echo "🔑 Getting JWT token..."
+          echo "Audience: ${{ inputs.audience || 'api.tailscale.com/kM66yc9sF721CNTRL' }}"
+          echo "Client ID: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/kM66yc9sF721CNTRL' }}"
+          
+          JWT=$(curl -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${{ inputs.audience || 'api.tailscale.com/kM66yc9sF721CNTRL' }}" | jq -r '.value')
+          
+          echo "JWT length: ${#JWT}"
+          echo "JWT first 50 chars: ${JWT:0:50}..."
+          echo "JWT=$JWT" >> $GITHUB_ENV
+
+      - name: Perform OIDC token exchange
+        run: |
+          echo "🔄 Performing token exchange..."
+          
+          # Show what we're sending
+          echo "Client ID: ${{ inputs.client_id || 'tailnet-id/client-id' }}"
+          echo "JWT length: ${#JWT}"
+          
+          # Perform the OIDC token exchange with Tailscale
+          RESPONSE=$(curl -X POST https://api.tailscale.com/api/v2/oauth/token-exchange \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "client_id=${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/kM66yc9sF721CNTRL' }}" \
+            -d "jwt=$JWT" \
+            -w "HTTP_CODE:%{http_code}")
+          
+          # Extract HTTP code and response body
+          HTTP_CODE=$(echo "$RESPONSE" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2)
+          RESPONSE_BODY=$(echo "$RESPONSE" | sed 's/HTTP_CODE:[0-9]*$//')
+          
+          echo "HTTP Status: $HTTP_CODE"
+          echo "Response: $RESPONSE_BODY"
+          
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Token exchange failed!"
+            exit 1
+          fi
+          
+          # Extract access token
+          ACCESS_TOKEN=$(echo $RESPONSE_BODY | jq -r '.access_token')
+          echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
+          echo "✅ Access token obtained: ${ACCESS_TOKEN:0:10}..."
+
+      - name: Test API request
+        run: |
+          echo "🌐 Testing API request..."
+          curl -v https://api.tailscale.com/api/v2/tailnet/${{ inputs.tailnet || '_lbr_sandbox' }}/devices \
+            --header "Authorization: Bearer ${ACCESS_TOKEN}"
+
+  # Test using your custom action
+  test-custom-action:
+    runs-on: ubuntu-latest
+    needs: test-oidc-flow  # Only run if the raw OIDC test passes
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install
-        run: |
-          npm ci
-          npm run build
-
-      # Use the undocumented OIDC API - no secrets needed!
-      - name: Configure Tailscale Credentials (OIDC)
-        uses: ./
+      - name: Configure Tailscale Credentials (Custom Action)
+        id: tailscale-auth
+        uses: ./configure-tailscale-credentials
         with:
-          audience: 'api.tailscale.com/kM66yc9sF721CNTRL'
-          client-id: 'TdWjeTt8mN11CNTRL/kM66yc9sF721CNTRL' 
-          tailnet: '_lbr_sandbox'
-          tags: 'ci'
+          audience: ${{ inputs.audience || 'api.tailscale.com/kM66yc9sF721CNTRL' }}
+          client-id: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/kM66yc9sF721CNTRL' }}
+          tailnet: ${{ inputs.tailnet || '_lbr_sandbox' }}
+          tags: ${{ inputs.tags || 'ci' }}
 
       - name: Connect to Tailscale
         uses: tailscale/github-action@v2
         with:
           authkey: ${{ steps.tailscale-auth.outputs.ts-auth-key }}
-          tags: 'ci'
+          tags: ${{ inputs.tags || 'ci' }}
 
       - name: Check Tailscale Connection
         run: |
@@ -64,7 +115,7 @@ jobs:
 
       - name: Use Tailscale API
         env:
-          TS_ACCESS_TOKEN: ${{ env.TS_ACCESS_TOKEN }}
+          TS_ACCESS_TOKEN: ${{ steps.tailscale-auth.outputs.ts-access-token }}
         run: |
           echo "Listing devices in tailnet..."
           curl -H "Authorization: Bearer $TS_ACCESS_TOKEN" \
