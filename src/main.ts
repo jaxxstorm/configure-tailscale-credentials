@@ -200,7 +200,7 @@ async function createTailscaleOAuthClient(
 ): Promise<OAuthClientResponse> {
     const clientSpec = {
         keyType: 'client',
-        scopes: ['device:core', 'auth_keys'],
+        scopes: ['devices:core', 'auth_keys'],
         description: 'GitHub Actions OAuth client',
         ...(options.tags && { tags: options.tags })
     }
