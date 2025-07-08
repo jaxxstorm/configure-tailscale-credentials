@@ -200,17 +200,7 @@ async function createTailscaleOAuthClient(
 ): Promise<OAuthClientResponse> {
     const clientSpec = {
         keyType: 'client',
-        capabilities: {
-            devices: {
-                create: {
-                    ephemeral: true,
-                    preauthorized: true,
-                    reusable: false,
-                    ...(options.tags && { tags: options.tags })
-                }
-            }
-        },
-        scopes: ['all:read', 'devices:write'],
+        scopes: ['device:core', 'auth_keys'],
         description: 'GitHub Actions OAuth client',
         ...(options.tags && { tags: options.tags })
     }
