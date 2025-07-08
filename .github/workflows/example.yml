@@ -41,7 +41,7 @@ jobs:
 
       # Use the undocumented OIDC API - no secrets needed!
       - name: Configure Tailscale Credentials (OIDC)
-        uses: ./configure-tailscale-credentials
+        uses: ./
         with:
           audience: 'api.tailscale.com/kM66yc9sF721CNTRL'
           client-id: 'TdWjeTt8mN11CNTRL/kM66yc9sF721CNTRL' 
