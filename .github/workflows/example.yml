@@ -105,6 +105,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Build custom action
+        run: |
+          echo "🔨 Building custom action..."
+          npm install
+          npm run build
+
       - name: Configure Tailscale Credentials (Custom Action)
         id: tailscale-auth
         uses: ./

@@ -27466,9 +27466,6 @@ async function run() {
         const audience = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput('audience', { required: true });
         const tailnet = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput('tailnet') || '-';
         const tags = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput('tags');
-        const ephemeral = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getBooleanInput('ephemeral') !== false; // default true
-        const preauthorized = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getBooleanInput('preauthorized') !== false; // default true
-        const reusable = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getBooleanInput('reusable') || false; // default false
         const scope = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput('scope') || 'auth_keys devices:core';
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Starting Tailscale OAuth authentication flow...');
         // 1) Request JWT from GitHub with custom audience
@@ -27489,9 +27486,6 @@ async function run() {
         // 3) Create ephemeral auth key
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Creating Tailscale auth key...');
         const authKey = await createTailscaleAuthKey(accessToken, tailnet, {
-            ephemeral,
-            preauthorized,
-            reusable,
             tags: tags ? tags.split(',').map(tag => tag.trim()) : undefined
         });
         // Mark auth key as secret and export
@@ -27511,7 +27505,7 @@ async function run() {
 async function exchangeTokenForTailscaleToken(clientId, jwt, scope) {
     const form = new URLSearchParams({
         client_id: clientId,
-        jwt: jwt // The undocumented API uses 'jwt' not 'subject_token'
+        jwt: jwt
     });
     const httpClient = new _actions_http_client__WEBPACK_IMPORTED_MODULE_1__.HttpClient('configure-tailscale-credentials', undefined, {
         headers: {
@@ -27546,9 +27540,9 @@ async function createTailscaleAuthKey(accessToken, tailnet, options) {
         capabilities: {
             devices: {
                 create: {
-                    ephemeral: options.ephemeral,
-                    preauthorized: options.preauthorized,
-                    reusable: options.reusable,
+                    ephemeral: true, // Default to true for CI keys
+                    preauthorized: true, // Default to true for CI keys  
+                    reusable: false, // Default to false for CI keys
                     ...(options.tags && { tags: options.tags })
                 }
             }
