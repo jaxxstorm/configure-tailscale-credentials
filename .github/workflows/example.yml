@@ -10,11 +10,11 @@ on:
       audience:
         description: 'Tailscale OIDC audience (api.tailscale.com/YOUR_TAILNET_ID)'
         required: true
-        default: api.tailscale.com/kNV3iqFLbg11CNTRL
+        default: api.tailscale.com/kHWmv3fFFX11CNTRL
       client_id:
         description: 'Tailscale client ID (tailnet-id/client-id)'
         required: true
-        default: TdWjeTt8mN11CNTRL/kNV3iqFLbg11CNTRL
+        default: TdWjeTt8mN11CNTRL/kHWmv3fFFX11CNTRL
       tailnet:
         description: 'Tailnet name'
         required: false
