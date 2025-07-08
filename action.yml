@@ -1,0 +1,30 @@
+name: 'Configure Tailscale Credentials'
+description: 'Configure Tailscale credentials using GitHub OIDC (undocumented API)'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  audience:
+    description: 'OIDC audience
+    required: true
+  client-id:
+    description: 'Tailscale client ID
+    required: true
+  tailnet:
+    description: 'Tailnet name'
+    required: false
+    default: '-'
+  tags:
+    description: 'Comma-separated list of tags to apply to auth keys'
+    required: false
+
+outputs:
+  ts-access-token:
+    description: 'Tailscale API access token'
+  ts-auth-key:
+    description: 'Tailscale auth key for connecting devices'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
