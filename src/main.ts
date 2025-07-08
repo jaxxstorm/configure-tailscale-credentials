@@ -140,9 +140,6 @@ async function createTailscaleAuthKey(
     accessToken: string,
     tailnet: string,
     options: {
-        ephemeral: boolean
-        preauthorized: boolean
-        reusable: boolean
         tags?: string[]
     }
 ): Promise<string> {
