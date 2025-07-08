@@ -32,7 +32,7 @@ jobs:
       AUDIENCE: ${{ inputs.audience || 'api.tailscale.com/k4xgsqeDG111CNTRL' }}
       CLIENT_ID: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/k4xgsqeDG111CNTRL' }}
       TAILNET: ${{ inputs.tailnet || '_lbr_sandbox' }}
-      TAGS: ${{ inputs.tags || 'ci' }}
+      TAGS: ${{ inputs.tags || 'tag:ci' }}
     steps:
       - name: Get OIDC token from GitHub Actions
         run: |
@@ -100,7 +100,7 @@ jobs:
       AUDIENCE: ${{ inputs.audience || 'api.tailscale.com/k4xgsqeDG111CNTRL' }}
       CLIENT_ID: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/k4xgsqeDG111CNTRL' }}
       TAILNET: ${{ inputs.tailnet || '_lbr_sandbox' }}
-      TAGS: ${{ inputs.tags || 'ci' }}
+      TAGS: ${{ inputs.tags || 'tag:ci' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -118,13 +118,13 @@ jobs:
           audience: ${{ inputs.audience || env.AUDIENCE }}
           client-id: ${{ inputs.client_id || env.CLIENT_ID }}
           tailnet: ${{ inputs.tailnet || env.TAILNET }}
-          tags: ${{ inputs.tags || 'ci' }}
+          tags: ${{ inputs.tags || 'tag:ci' }}
 
       - name: Connect to Tailscale
         uses: tailscale/github-action@v2
         with:
           authkey: ${{ steps.tailscale-auth.outputs.ts-auth-key }}
-          tags: ${{ inputs.tags || 'ci' }}
+          tags: ${{ inputs.tags || 'tag:ci' }}
 
       - name: Check Tailscale Connection
         run: |
