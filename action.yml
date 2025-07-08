@@ -22,8 +22,10 @@ inputs:
 outputs:
   ts-access-token:
     description: 'Tailscale API access token'
-  ts-auth-key:
-    description: 'Tailscale auth key for connecting devices'
+  ts-oauth-client-id:
+    description: 'Tailscale OAuth client ID'
+  ts-oauth-client-secret:
+    description: 'Tailscale OAuth client secret'
 
 runs:
   using: 'node20'

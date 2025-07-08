@@ -27466,7 +27466,6 @@ async function run() {
         const audience = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput('audience', { required: true });
         const tailnet = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput('tailnet') || '-';
         const tags = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput('tags');
-        const scope = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput('scope') || 'auth_keys devices:core';
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Starting Tailscale OAuth authentication flow...');
         // 1) Request JWT from GitHub with custom audience
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Requesting GitHub ID token with audience: ${audience}`);
@@ -27474,26 +27473,32 @@ async function run() {
         if (!jwt) {
             throw new Error('Failed to obtain GitHub ID token. Ensure id-token: write permission is set.');
         }
+        // Log JWT info for debugging (first 50 chars only)
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`✅ JWT obtained: ${jwt.substring(0, 50)}...`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`JWT length: ${jwt.length} characters`);
         // 2) Exchange JWT for Tailscale API token
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Exchanging GitHub ID token for Tailscale access token...');
-        const accessToken = await exchangeTokenForTailscaleToken(clientId, jwt, scope);
+        const accessToken = await exchangeTokenForTailscaleToken(clientId, jwt);
         // Mark token as secret and export
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.setSecret(accessToken);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.exportVariable('TS_ACCESS_TOKEN', accessToken);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.setOutput('ts-access-token', accessToken);
         // Output partial token for debugging (first 10 chars only)
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`✅ Access token created: ${accessToken.substring(0, 10)}...`);
-        // 3) Create ephemeral auth key
-        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Creating Tailscale auth key...');
-        const authKey = await createTailscaleAuthKey(accessToken, tailnet, {
+        // 3) Create OAuth client
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Creating Tailscale OAuth client...');
+        const oauthClient = await createTailscaleOAuthClient(accessToken, tailnet, {
             tags: tags ? tags.split(',').map(tag => tag.trim()) : undefined
         });
-        // Mark auth key as secret and export
-        _actions_core__WEBPACK_IMPORTED_MODULE_0__.setSecret(authKey);
-        _actions_core__WEBPACK_IMPORTED_MODULE_0__.exportVariable('TS_AUTH_KEY', authKey);
-        _actions_core__WEBPACK_IMPORTED_MODULE_0__.setOutput('ts-auth-key', authKey);
-        // Output partial auth key for debugging (first 10 chars only)
-        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`✅ Auth key created: ${authKey.substring(0, 10)}...`);
+        // Mark OAuth client secret as secret and export
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.setSecret(oauthClient.key);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.exportVariable('TS_OAUTH_CLIENT_ID', oauthClient.id);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.exportVariable('TS_OAUTH_CLIENT_SECRET', oauthClient.key);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.setOutput('ts-oauth-client-id', oauthClient.id);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.setOutput('ts-oauth-client-secret', oauthClient.key);
+        // Output partial client info for debugging
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`✅ OAuth client created: ${oauthClient.id}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`✅ OAuth client secret: ${oauthClient.key.substring(0, 20)}...`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('✅ Tailscale credentials configured successfully!');
     }
     catch (error) {
@@ -27502,10 +27507,10 @@ async function run() {
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.setFailed(errorMessage);
     }
 }
-async function exchangeTokenForTailscaleToken(clientId, jwt, scope) {
+async function exchangeTokenForTailscaleToken(clientId, jwt) {
     const form = new URLSearchParams({
         client_id: clientId,
-        jwt: jwt
+        jwt: jwt // The undocumented API uses 'jwt' not 'subject_token'
     });
     const httpClient = new _actions_http_client__WEBPACK_IMPORTED_MODULE_1__.HttpClient('configure-tailscale-credentials', undefined, {
         headers: {
@@ -27514,13 +27519,34 @@ async function exchangeTokenForTailscaleToken(clientId, jwt, scope) {
         }
     });
     try {
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Making token exchange request to: https://api.tailscale.com/api/v2/oauth/token-exchange`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Client ID: ${clientId}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`JWT length: ${jwt.length}`);
         const response = await httpClient.post('https://api.tailscale.com/api/v2/oauth/token-exchange', form.toString(), {
             'Content-Type': 'application/x-www-form-urlencoded'
         });
         const responseBody = await response.readBody();
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Response status: ${response.message.statusCode}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Response headers: ${JSON.stringify(response.message.headers)}`);
+        // Log response body for debugging (but redact sensitive data)
         if (response.message.statusCode !== 200) {
-            const errorResponse = JSON.parse(responseBody);
-            throw new Error(`Token exchange failed (${response.message.statusCode}): ${errorResponse.error || 'Unknown error'}`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.error(`Full error response: ${responseBody}`);
+        }
+        else {
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Response body length: ${responseBody.length}`);
+        }
+        if (response.message.statusCode !== 200) {
+            let errorMessage = 'Unknown error';
+            try {
+                const errorResponse = JSON.parse(responseBody);
+                errorMessage = errorResponse.error_description || errorResponse.error || errorResponse.message || 'Unknown error';
+                _actions_core__WEBPACK_IMPORTED_MODULE_0__.error(`Parsed error: ${JSON.stringify(errorResponse)}`);
+            }
+            catch (parseError) {
+                _actions_core__WEBPACK_IMPORTED_MODULE_0__.error(`Failed to parse error response: ${parseError}`);
+                _actions_core__WEBPACK_IMPORTED_MODULE_0__.error(`Raw response: ${responseBody}`);
+            }
+            throw new Error(`Token exchange failed (${response.message.statusCode}): ${errorMessage}`);
         }
         const tokenResponse = JSON.parse(responseBody);
         if (!tokenResponse.access_token) {
@@ -27530,23 +27556,31 @@ async function exchangeTokenForTailscaleToken(clientId, jwt, scope) {
     }
     catch (error) {
         if (error instanceof Error) {
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.error(`Token exchange error details: ${error.message}`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.error(`Error stack: ${error.stack}`);
             throw error;
         }
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.error(`Unknown error type: ${typeof error}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.error(`Error value: ${String(error)}`);
         throw new Error(`Token exchange request failed: ${String(error)}`);
     }
 }
-async function createTailscaleAuthKey(accessToken, tailnet, options) {
-    const keySpec = {
+async function createTailscaleOAuthClient(accessToken, tailnet, options) {
+    const clientSpec = {
+        keyType: 'client',
         capabilities: {
             devices: {
                 create: {
-                    ephemeral: true, // Default to true for CI keys
-                    preauthorized: true, // Default to true for CI keys  
-                    reusable: false, // Default to false for CI keys
+                    ephemeral: true,
+                    preauthorized: true,
+                    reusable: false,
                     ...(options.tags && { tags: options.tags })
                 }
             }
-        }
+        },
+        scopes: ['all:read', 'devices:write'],
+        description: 'GitHub Actions OAuth client',
+        ...(options.tags && { tags: options.tags })
     };
     const httpClient = new _actions_http_client__WEBPACK_IMPORTED_MODULE_1__.HttpClient('configure-tailscale-credentials', undefined, {
         headers: {
@@ -27559,22 +27593,22 @@ async function createTailscaleAuthKey(accessToken, tailnet, options) {
         'Content-Type': 'application/json'
     };
     try {
-        const response = await httpClient.postJson(`https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`, keySpec, headers);
+        const response = await httpClient.postJson(`https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`, clientSpec, headers);
         if (response.statusCode !== 200 && response.statusCode !== 201) {
             const errorResponse = response.result;
-            throw new Error(`Auth key creation failed (${response.statusCode}): ${errorResponse.message || errorResponse.error || 'Unknown error'}`);
+            throw new Error(`OAuth client creation failed (${response.statusCode}): ${errorResponse.message || errorResponse.error || 'Unknown error'}`);
         }
-        const authKeyResponse = response.result;
-        if (!authKeyResponse.key) {
-            throw new Error('No auth key received from Tailscale');
+        const oauthClientResponse = response.result;
+        if (!oauthClientResponse.key || !oauthClientResponse.id) {
+            throw new Error('No OAuth client credentials received from Tailscale');
         }
-        return authKeyResponse.key;
+        return oauthClientResponse;
     }
     catch (error) {
         if (error instanceof Error) {
             throw error;
         }
-        throw new Error(`Auth key creation request failed: ${String(error)}`);
+        throw new Error(`OAuth client creation request failed: ${String(error)}`);
     }
 }
 // Execute the action

@@ -25,6 +25,30 @@ interface AuthKeyResponse {
     }
 }
 
+interface OAuthClientResponse {
+    id: string
+    key: string
+    keyType: string
+    expirySeconds: number
+    created: string
+    expires: string
+    capabilities: {
+        devices: {
+            create: {
+                reusable: boolean
+                ephemeral: boolean
+                preauthorized: boolean
+                tags?: string[]
+            }
+        }
+    }
+    scopes: string[]
+    tags?: string[]
+    description: string
+    invalid: boolean
+    userId: string
+}
+
 interface ErrorResponse {
     error: string
     error_description?: string
@@ -38,7 +62,6 @@ async function run(): Promise<void> {
         const audience = core.getInput('audience', { required: true })
         const tailnet = core.getInput('tailnet') || '-'
         const tags = core.getInput('tags')
-        const scope = core.getInput('scope') || 'auth_keys devices:core'
 
         core.info('Starting Tailscale OAuth authentication flow...')
 
@@ -50,9 +73,13 @@ async function run(): Promise<void> {
             throw new Error('Failed to obtain GitHub ID token. Ensure id-token: write permission is set.')
         }
 
+        // Log JWT info for debugging (first 50 chars only)
+        core.info(`✅ JWT obtained: ${jwt.substring(0, 50)}...`)
+        core.info(`JWT length: ${jwt.length} characters`)
+
         // 2) Exchange JWT for Tailscale API token
         core.info('Exchanging GitHub ID token for Tailscale access token...')
-        const accessToken = await exchangeTokenForTailscaleToken(clientId, jwt, scope)
+        const accessToken = await exchangeTokenForTailscaleToken(clientId, jwt)
 
         // Mark token as secret and export
         core.setSecret(accessToken)
@@ -62,19 +89,22 @@ async function run(): Promise<void> {
         // Output partial token for debugging (first 10 chars only)
         core.info(`✅ Access token created: ${accessToken.substring(0, 10)}...`)
 
-        // 3) Create ephemeral auth key
-        core.info('Creating Tailscale auth key...')
-        const authKey = await createTailscaleAuthKey(accessToken, tailnet, {
+        // 3) Create OAuth client
+        core.info('Creating Tailscale OAuth client...')
+        const oauthClient = await createTailscaleOAuthClient(accessToken, tailnet, {
             tags: tags ? tags.split(',').map(tag => tag.trim()) : undefined
         })
 
-        // Mark auth key as secret and export
-        core.setSecret(authKey)
-        core.exportVariable('TS_AUTH_KEY', authKey)
-        core.setOutput('ts-auth-key', authKey)
+        // Mark OAuth client secret as secret and export
+        core.setSecret(oauthClient.key)
+        core.exportVariable('TS_OAUTH_CLIENT_ID', oauthClient.id)
+        core.exportVariable('TS_OAUTH_CLIENT_SECRET', oauthClient.key)
+        core.setOutput('ts-oauth-client-id', oauthClient.id)
+        core.setOutput('ts-oauth-client-secret', oauthClient.key)
         
-        // Output partial auth key for debugging (first 10 chars only)
-        core.info(`✅ Auth key created: ${authKey.substring(0, 10)}...`)
+        // Output partial client info for debugging
+        core.info(`✅ OAuth client created: ${oauthClient.id}`)
+        core.info(`✅ OAuth client secret: ${oauthClient.key.substring(0, 20)}...`)
 
         core.info('✅ Tailscale credentials configured successfully!')
         
@@ -87,12 +117,11 @@ async function run(): Promise<void> {
 
 async function exchangeTokenForTailscaleToken(
     clientId: string,
-    jwt: string,
-    scope: string
+    jwt: string
 ): Promise<string> {
     const form = new URLSearchParams({
         client_id: clientId,
-        jwt: jwt
+        jwt: jwt  // The undocumented API uses 'jwt' not 'subject_token'
     })
 
     const httpClient = new http.HttpClient('configure-tailscale-credentials', undefined, {
@@ -103,6 +132,10 @@ async function exchangeTokenForTailscaleToken(
     })
 
     try {
+        core.info(`Making token exchange request to: https://api.tailscale.com/api/v2/oauth/token-exchange`)
+        core.info(`Client ID: ${clientId}`)
+        core.info(`JWT length: ${jwt.length}`)
+        
         const response = await httpClient.post(
             'https://api.tailscale.com/api/v2/oauth/token-exchange',
             form.toString(),
@@ -112,11 +145,29 @@ async function exchangeTokenForTailscaleToken(
         )
 
         const responseBody = await response.readBody()
+        core.info(`Response status: ${response.message.statusCode}`)
+        core.info(`Response headers: ${JSON.stringify(response.message.headers)}`)
         
+        // Log response body for debugging (but redact sensitive data)
         if (response.message.statusCode !== 200) {
-            const errorResponse: ErrorResponse = JSON.parse(responseBody)
+            core.error(`Full error response: ${responseBody}`)
+        } else {
+            core.info(`Response body length: ${responseBody.length}`)
+        }
+
+        if (response.message.statusCode !== 200) {
+            let errorMessage = 'Unknown error'
+            try {
+                const errorResponse: ErrorResponse = JSON.parse(responseBody)
+                errorMessage = errorResponse.error_description || errorResponse.error || errorResponse.message || 'Unknown error'
+                core.error(`Parsed error: ${JSON.stringify(errorResponse)}`)
+            } catch (parseError) {
+                core.error(`Failed to parse error response: ${parseError}`)
+                core.error(`Raw response: ${responseBody}`)
+            }
+            
             throw new Error(
-                `Token exchange failed (${response.message.statusCode}): ${errorResponse.error || 'Unknown error'}`
+                `Token exchange failed (${response.message.statusCode}): ${errorMessage}`
             )
         }
 
@@ -130,30 +181,38 @@ async function exchangeTokenForTailscaleToken(
         
     } catch (error) {
         if (error instanceof Error) {
+            core.error(`Token exchange error details: ${error.message}`)
+            core.error(`Error stack: ${error.stack}`)
             throw error
         }
+        core.error(`Unknown error type: ${typeof error}`)
+        core.error(`Error value: ${String(error)}`)
         throw new Error(`Token exchange request failed: ${String(error)}`)
     }
 }
 
-async function createTailscaleAuthKey(
+async function createTailscaleOAuthClient(
     accessToken: string,
     tailnet: string,
     options: {
         tags?: string[]
     }
-): Promise<string> {
-    const keySpec = {
+): Promise<OAuthClientResponse> {
+    const clientSpec = {
+        keyType: 'client',
         capabilities: {
             devices: {
                 create: {
-                    ephemeral: true, // Default to true for CI keys
-                    preauthorized: true, // Default to true for CI keys  
-                    reusable: false, // Default to false for CI keys
+                    ephemeral: true,
+                    preauthorized: true,
+                    reusable: false,
                     ...(options.tags && { tags: options.tags })
                 }
             }
-        }
+        },
+        scopes: ['all:read', 'devices:write'],
+        description: 'GitHub Actions OAuth client',
+        ...(options.tags && { tags: options.tags })
     }
 
     const httpClient = new http.HttpClient('configure-tailscale-credentials', undefined, {
@@ -171,30 +230,30 @@ async function createTailscaleAuthKey(
     try {
         const response = await httpClient.postJson(
             `https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`,
-            keySpec,
+            clientSpec,
             headers
         )
 
         if (response.statusCode !== 200 && response.statusCode !== 201) {
             const errorResponse = response.result as ErrorResponse
             throw new Error(
-                `Auth key creation failed (${response.statusCode}): ${errorResponse.message || errorResponse.error || 'Unknown error'}`
+                `OAuth client creation failed (${response.statusCode}): ${errorResponse.message || errorResponse.error || 'Unknown error'}`
             )
         }
 
-        const authKeyResponse = response.result as AuthKeyResponse
+        const oauthClientResponse = response.result as OAuthClientResponse
 
-        if (!authKeyResponse.key) {
-            throw new Error('No auth key received from Tailscale')
+        if (!oauthClientResponse.key || !oauthClientResponse.id) {
+            throw new Error('No OAuth client credentials received from Tailscale')
         }
 
-        return authKeyResponse.key
+        return oauthClientResponse
         
     } catch (error) {
         if (error instanceof Error) {
             throw error
         }
-        throw new Error(`Auth key creation request failed: ${String(error)}`)
+        throw new Error(`OAuth client creation request failed: ${String(error)}`)
     }
 }
 
