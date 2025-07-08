@@ -6,7 +6,7 @@ branding:
 
 inputs:
   audience:
-    description: 'OIDC audience
+    description: 'OIDC audience'
     required: true
   client-id:
     description: 'Tailscale client ID'
