@@ -9,7 +9,7 @@ inputs:
     description: 'OIDC audience
     required: true
   client-id:
-    description: 'Tailscale client ID
+    description: 'Tailscale client ID'
     required: true
   tailnet:
     description: 'Tailnet name'
