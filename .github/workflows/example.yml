@@ -10,12 +10,15 @@ on:
       audience:
         description: 'Tailscale OIDC audience (api.tailscale.com/YOUR_TAILNET_ID)'
         required: true
+        default: api.tailscale.com/k9X9RLxw3821CNTRL
       client_id:
         description: 'Tailscale client ID (tailnet-id/client-id)'
         required: true
+        default: TdWjeTt8mN11CNTRL/k9X9RLxw3821CNTRL
       tailnet:
         description: 'Tailnet name'
         required: false
+        default: '_lbr_sandbox'
       tags:
         description: 'Comma-separated tags for devices'
         required: false
@@ -32,11 +35,11 @@ jobs:
       - name: Get OIDC token from GitHub Actions
         run: |
           echo "🔑 Getting JWT token..."
-          echo "Audience: ${{ inputs.audience || 'api.tailscale.com/kM66yc9sF721CNTRL' }}"
-          echo "Client ID: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/kM66yc9sF721CNTRL' }}"
-          
-          JWT=$(curl -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${{ inputs.audience || 'api.tailscale.com/kM66yc9sF721CNTRL' }}" | jq -r '.value')
-          
+          echo "Audience: ${{ inputs.audience }}"
+          echo "Client ID: ${{ inputs.client_id }}"
+
+          JWT=$(curl -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${{ inputs.audience }}" | jq -r '.value')
+
           echo "JWT length: ${#JWT}"
           echo "JWT first 50 chars: ${JWT:0:50}..."
           echo "JWT=$JWT" >> $GITHUB_ENV
@@ -46,13 +49,13 @@ jobs:
           echo "🔄 Performing token exchange..."
           
           # Show what we're sending
-          echo "Client ID: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/kM66yc9sF721CNTRL' }}"
+          echo "Client ID: ${{ inputs.client_id }}"
           echo "JWT length: ${#JWT}"
           
           # Perform the OIDC token exchange with Tailscale
           RESPONSE=$(curl -X POST https://api.tailscale.com/api/v2/oauth/token-exchange \
             -H "Content-Type: application/x-www-form-urlencoded" \
-            -d "client_id=${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/kM66yc9sF721CNTRL' }}" \
+            -d "client_id=${{ inputs.client_id }}" \
             -d "jwt=$JWT" \
             -w "HTTP_CODE:%{http_code}")
           
@@ -76,7 +79,7 @@ jobs:
       - name: Test API request
         run: |
           echo "🌐 Testing API request..."
-          curl -v https://api.tailscale.com/api/v2/tailnet/${{ inputs.tailnet || '_lbr_sandbox' }}/devices \
+          curl -v https://api.tailscale.com/api/v2/tailnet/${{ inputs.tailnet }}/devices \
             --header "Authorization: Bearer ${ACCESS_TOKEN}"
 
   # Test using your custom action
@@ -94,16 +97,16 @@ jobs:
         id: tailscale-auth
         uses: ./configure-tailscale-credentials
         with:
-          audience: ${{ inputs.audience || 'api.tailscale.com/kM66yc9sF721CNTRL' }}
-          client-id: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/kM66yc9sF721CNTRL' }}
-          tailnet: ${{ inputs.tailnet || '_lbr_sandbox' }}
-          tags: ${{ inputs.tags || 'ci' }}
+          audience: ${{ inputs.audience  }}
+          client-id: ${{ inputs.client_id }}
+          tailnet: ${{ inputs.tailnet  }}
+          tags: ${{ inputs.tags }}
 
       - name: Connect to Tailscale
         uses: tailscale/github-action@v2
         with:
           authkey: ${{ steps.tailscale-auth.outputs.ts-auth-key }}
-          tags: ${{ inputs.tags || 'ci' }}
+          tags: ${{ inputs.tags }}
 
       - name: Check Tailscale Connection
         run: |
