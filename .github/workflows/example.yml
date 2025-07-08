@@ -46,7 +46,7 @@ jobs:
           echo "🔄 Performing token exchange..."
           
           # Show what we're sending
-          echo "Client ID: ${{ inputs.client_id || 'tailnet-id/client-id' }}"
+          echo "Client ID: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/kM66yc9sF721CNTRL' }}"
           echo "JWT length: ${#JWT}"
           
           # Perform the OIDC token exchange with Tailscale
