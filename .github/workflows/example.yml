@@ -107,7 +107,7 @@ jobs:
 
       - name: Configure Tailscale Credentials (Custom Action)
         id: tailscale-auth
-        uses: .
+        uses: ./
         with:
           audience: ${{ inputs.audience || env.AUDIENCE }}
           client-id: ${{ inputs.client_id || env.CLIENT_ID }}
