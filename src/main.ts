@@ -38,9 +38,6 @@ async function run(): Promise<void> {
         const audience = core.getInput('audience', { required: true })
         const tailnet = core.getInput('tailnet') || '-'
         const tags = core.getInput('tags')
-        const ephemeral = core.getBooleanInput('ephemeral') !== false // default true
-        const preauthorized = core.getBooleanInput('preauthorized') !== false // default true
-        const reusable = core.getBooleanInput('reusable') || false // default false
         const scope = core.getInput('scope') || 'auth_keys devices:core'
 
         core.info('Starting Tailscale OAuth authentication flow...')
@@ -68,9 +65,6 @@ async function run(): Promise<void> {
         // 3) Create ephemeral auth key
         core.info('Creating Tailscale auth key...')
         const authKey = await createTailscaleAuthKey(accessToken, tailnet, {
-            ephemeral,
-            preauthorized,
-            reusable,
             tags: tags ? tags.split(',').map(tag => tag.trim()) : undefined
         })
 
@@ -156,9 +150,9 @@ async function createTailscaleAuthKey(
         capabilities: {
             devices: {
                 create: {
-                    ephemeral: options.ephemeral,
-                    preauthorized: options.preauthorized,
-                    reusable: options.reusable,
+                    ephemeral: true, // Default to true for CI keys
+                    preauthorized: true, // Default to true for CI keys  
+                    reusable: false, // Default to false for CI keys
                     ...(options.tags && { tags: options.tags })
                 }
             }
