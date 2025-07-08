@@ -29,8 +29,8 @@ jobs:
       id-token: write
       contents: read
     env:
-      AUDIENCE: ${{ inputs.audience || 'api.tailscale.com/kwfotJSwpf11CNTRL' }}
-      CLIENT_ID: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/kwfotJSwpf11CNTRL' }}
+      AUDIENCE: ${{ inputs.audience || 'api.tailscale.com/kMuaEw2Rs111CNTRL' }}
+      CLIENT_ID: ${{ inputs.client_id || 'TdWjeTt8mN11CNTRL/kMuaEw2Rs111CNTRL' }}
       TAILNET: ${{ inputs.tailnet || '_lbr_sandbox' }}
       TAGS: ${{ inputs.tags || 'ci' }}
     steps:
