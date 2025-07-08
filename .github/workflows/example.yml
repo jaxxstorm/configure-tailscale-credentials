@@ -43,12 +43,12 @@ jobs:
           echo "JWT length: ${#JWT}"
           echo "JWT first 50 chars: ${JWT:0:50}..."
           echo "JWT=$JWT" >> $GITHUB_ENV
+          
       - name: Debug JWT Claims
         run: |
           echo "Decoding JWT to check claims..."
           JWT_PAYLOAD=$(echo "$JWT" | cut -d. -f2)
-          # Add padding for base64 decode
-          JWT_PAYLOAD_PADDED=$(printf "$JWT_PAYLOAD%*s" $((4 - ${#JWT_PAYLOAD} % 4)) | tr ' ' '=')
+          JWT_PAYLOAD_PADDED=$(printf "$JWT_PAYLOAD"; printf "%*s" $((4 - ${#JWT_PAYLOAD} % 4)) | tr ' ' '=')
           echo "$JWT_PAYLOAD_PADDED" | base64 -d | jq .
 
       - name: Perform OIDC token exchange
@@ -104,9 +104,9 @@ jobs:
         id: tailscale-auth
         uses: ./configure-tailscale-credentials
         with:
-          audience: ${{ inputs.audience  }}
+          audience: ${{ inputs.audience }}
           client-id: ${{ inputs.client_id }}
-          tailnet: ${{ inputs.tailnet  }}
+          tailnet: ${{ inputs.tailnet }}
           tags: ${{ inputs.tags }}
 
       - name: Connect to Tailscale
@@ -124,9 +124,7 @@ jobs:
           tailscale ip -4
 
       - name: Use Tailscale API
-        env:
-          TS_ACCESS_TOKEN: ${{ steps.tailscale-auth.outputs.ts-access-token }}
         run: |
           echo "Listing devices in tailnet..."
-          curl -H "Authorization: Bearer $TS_ACCESS_TOKEN" \
+          curl -H "Authorization: Bearer ${{ steps.tailscale-auth.outputs.ts-access-token }}" \
                https://api.tailscale.com/api/v2/tailnet/-/devices
