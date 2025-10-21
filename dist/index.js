@@ -27497,7 +27497,14 @@ async function run() {
         // Log JWT info for debugging (first 50 chars only)
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`✅ JWT obtained: ${jwt.substring(0, 50)}...`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`JWT length: ${jwt.length} characters`);
-        debug(`Full JWT: ${jwt}`);
+        // Use stopCommands to prevent masking for debug output
+        if (isDebugEnabled()) {
+            const token = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getState('stopCommandsToken') || `debug-${Date.now()}`;
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.saveState('stopCommandsToken', token);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`::stop-commands::${token}`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: Full JWT: ${jwt}`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`::${token}::`);
+        }
         // 2) Exchange JWT for Tailscale API token
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Exchanging GitHub ID token for Tailscale access token...');
         const accessToken = await exchangeTokenForTailscaleToken(clientId, jwt);
@@ -27544,15 +27551,53 @@ async function exchangeTokenForTailscaleToken(clientId, jwt) {
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Making token exchange request to: https://api.tailscale.com/api/v2/oauth/token-exchange`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Client ID: ${clientId}`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`JWT length: ${jwt.length}`);
-        debug(`Full JWT being sent: ${jwt}`);
-        debug(`Request body: ${form.toString()}`);
-        const response = await httpClient.post('https://api.tailscale.com/api/v2/oauth/token-exchange', form.toString(), {
-            'Content-Type': 'application/x-www-form-urlencoded'
-        });
+        const requestBody = form.toString();
+        debug(`Request body length: ${requestBody.length}`);
+        debug(`Content-Type: application/x-www-form-urlencoded`);
+        // Decode the JWT to inspect its structure
+        try {
+            const jwtParts = jwt.split('.');
+            debug(`JWT parts count: ${jwtParts.length}`);
+            if (jwtParts.length >= 2) {
+                const header = JSON.parse(Buffer.from(jwtParts[0], 'base64').toString());
+                const payload = JSON.parse(Buffer.from(jwtParts[1], 'base64').toString());
+                debug(`JWT header: ${JSON.stringify(header)}`);
+                debug(`JWT payload: ${JSON.stringify(payload)}`);
+            }
+        }
+        catch (jwtDecodeError) {
+            debug(`Failed to decode JWT: ${jwtDecodeError}`);
+        }
+        // Use stopCommands to prevent masking for debug output
+        if (isDebugEnabled()) {
+            const token = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getState('stopCommandsToken') || `debug-${Date.now()}`;
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.saveState('stopCommandsToken', token);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`::stop-commands::${token}`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: Full JWT being sent: ${jwt}`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: Request body: ${requestBody}`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: Comparing to bash: client_id and jwt should be sent as form data`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: client_id value: ${clientId}`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: jwt parameter name: "jwt" (not "subject_token")`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`::${token}::`);
+        }
+        const requestHeaders = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json',
+            'User-Agent': 'configure-tailscale-credentials-action'
+        };
+        debug(`Request headers: ${JSON.stringify(requestHeaders)}`);
+        const response = await httpClient.post('https://api.tailscale.com/api/v2/oauth/token-exchange', form.toString(), requestHeaders);
         const responseBody = await response.readBody();
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Response status: ${response.message.statusCode}`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Response headers: ${JSON.stringify(response.message.headers)}`);
-        debug(`Full response body: ${responseBody}`);
+        // Use stopCommands to prevent masking for debug output
+        if (isDebugEnabled()) {
+            const token = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getState('stopCommandsToken') || `debug-${Date.now()}`;
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.saveState('stopCommandsToken', token);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`::stop-commands::${token}`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: Full response body: ${responseBody}`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`::${token}::`);
+        }
         // Log response body for debugging (but redact sensitive data)
         if (response.message.statusCode !== 200) {
             _actions_core__WEBPACK_IMPORTED_MODULE_0__.error(`Full error response: ${responseBody}`);
