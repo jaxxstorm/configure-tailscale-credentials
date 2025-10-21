@@ -3,13 +3,18 @@ import * as http from '@actions/http-client'
 
 // Helper function to check if debug mode is enabled
 function isDebugEnabled(): boolean {
-    return process.env.TS_ACTIONS_DEBUG === 'true' || process.env.TS_ACTIONS_DEBUG === '1'
+    return process.env.ACTIONS_STEP_DEBUG === 'true' || 
+           process.env.ACTIONS_STEP_DEBUG === '1' ||
+           core.isDebug() // Also check GitHub Actions native debug mode
 }
 
 // Helper function to log debug information
 function debug(message: string): void {
     if (isDebugEnabled()) {
         core.info(`🔍 DEBUG: ${message}`)
+    } else {
+        // Always use core.debug which will show when Actions debug logging is enabled
+        core.debug(message)
     }
 }
 
@@ -76,7 +81,7 @@ async function run(): Promise<void> {
         const tags = core.getInput('tags')
 
         core.info('Starting Tailscale OAuth authentication flow...')
-        debug(`Debug mode enabled via TS_ACTIONS_DEBUG=${process.env.TS_ACTIONS_DEBUG}`)
+        debug(`Debug mode enabled via ACTIONS_STEP_DEBUG=${process.env.ACTIONS_STEP_DEBUG}`)
         debug(`Client ID: ${clientId}`)
         debug(`Audience: ${audience}`)
         debug(`Tailnet: ${tailnet}`)

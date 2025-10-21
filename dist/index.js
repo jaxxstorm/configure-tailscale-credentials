@@ -27459,6 +27459,22 @@ var __webpack_exports__ = {};
 /* harmony import */ var _actions_http_client__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__nccwpck_require__.n(_actions_http_client__WEBPACK_IMPORTED_MODULE_1__);
 
 
+// Helper function to check if debug mode is enabled
+function isDebugEnabled() {
+    return process.env.ACTIONS_STEP_DEBUG === 'true' ||
+        process.env.ACTIONS_STEP_DEBUG === '1' ||
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.isDebug(); // Also check GitHub Actions native debug mode
+}
+// Helper function to log debug information
+function debug(message) {
+    if (isDebugEnabled()) {
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: ${message}`);
+    }
+    else {
+        // Always use core.debug which will show when Actions debug logging is enabled
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(message);
+    }
+}
 async function run() {
     try {
         // Get inputs
@@ -27467,6 +27483,11 @@ async function run() {
         const tailnet = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput('tailnet') || '-';
         const tags = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput('tags');
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Starting Tailscale OAuth authentication flow...');
+        debug(`Debug mode enabled via ACTIONS_STEP_DEBUG=${process.env.ACTIONS_STEP_DEBUG}`);
+        debug(`Client ID: ${clientId}`);
+        debug(`Audience: ${audience}`);
+        debug(`Tailnet: ${tailnet}`);
+        debug(`Tags: ${tags || 'none'}`);
         // 1) Request JWT from GitHub with custom audience
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Requesting GitHub ID token with audience: ${audience}`);
         const jwt = await _actions_core__WEBPACK_IMPORTED_MODULE_0__.getIDToken(audience);
@@ -27476,6 +27497,7 @@ async function run() {
         // Log JWT info for debugging (first 50 chars only)
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`✅ JWT obtained: ${jwt.substring(0, 50)}...`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`JWT length: ${jwt.length} characters`);
+        debug(`Full JWT: ${jwt}`);
         // 2) Exchange JWT for Tailscale API token
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Exchanging GitHub ID token for Tailscale access token...');
         const accessToken = await exchangeTokenForTailscaleToken(clientId, jwt);
@@ -27522,12 +27544,15 @@ async function exchangeTokenForTailscaleToken(clientId, jwt) {
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Making token exchange request to: https://api.tailscale.com/api/v2/oauth/token-exchange`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Client ID: ${clientId}`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`JWT length: ${jwt.length}`);
+        debug(`Full JWT being sent: ${jwt}`);
+        debug(`Request body: ${form.toString()}`);
         const response = await httpClient.post('https://api.tailscale.com/api/v2/oauth/token-exchange', form.toString(), {
             'Content-Type': 'application/x-www-form-urlencoded'
         });
         const responseBody = await response.readBody();
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Response status: ${response.message.statusCode}`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Response headers: ${JSON.stringify(response.message.headers)}`);
+        debug(`Full response body: ${responseBody}`);
         // Log response body for debugging (but redact sensitive data)
         if (response.message.statusCode !== 200) {
             _actions_core__WEBPACK_IMPORTED_MODULE_0__.error(`Full error response: ${responseBody}`);
@@ -27568,17 +27593,7 @@ async function exchangeTokenForTailscaleToken(clientId, jwt) {
 async function createTailscaleOAuthClient(accessToken, tailnet, options) {
     const clientSpec = {
         keyType: 'client',
-        capabilities: {
-            devices: {
-                create: {
-                    ephemeral: true,
-                    preauthorized: true,
-                    reusable: false,
-                    ...(options.tags && { tags: options.tags })
-                }
-            }
-        },
-        scopes: ['all:read', 'devices:write'],
+        scopes: ['devices:core', 'auth_keys'],
         description: 'GitHub Actions OAuth client',
         ...(options.tags && { tags: options.tags })
     };
@@ -27593,7 +27608,11 @@ async function createTailscaleOAuthClient(accessToken, tailnet, options) {
         'Content-Type': 'application/json'
     };
     try {
+        debug(`Creating OAuth client with spec: ${JSON.stringify(clientSpec)}`);
+        debug(`Request URL: https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`);
         const response = await httpClient.postJson(`https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`, clientSpec, headers);
+        debug(`OAuth client creation response status: ${response.statusCode}`);
+        debug(`OAuth client creation response: ${JSON.stringify(response.result)}`);
         if (response.statusCode !== 200 && response.statusCode !== 201) {
             const errorResponse = response.result;
             throw new Error(`OAuth client creation failed (${response.statusCode}): ${errorResponse.message || errorResponse.error || 'Unknown error'}`);
