@@ -1,6 +1,18 @@
 import * as core from '@actions/core'
 import * as http from '@actions/http-client'
 
+// Helper function to check if debug mode is enabled
+function isDebugEnabled(): boolean {
+    return process.env.TS_ACTIONS_DEBUG === 'true' || process.env.TS_ACTIONS_DEBUG === '1'
+}
+
+// Helper function to log debug information
+function debug(message: string): void {
+    if (isDebugEnabled()) {
+        core.info(`🔍 DEBUG: ${message}`)
+    }
+}
+
 interface TokenExchangeResponse {
     access_token: string
     token_type: string
@@ -64,6 +76,11 @@ async function run(): Promise<void> {
         const tags = core.getInput('tags')
 
         core.info('Starting Tailscale OAuth authentication flow...')
+        debug(`Debug mode enabled via TS_ACTIONS_DEBUG=${process.env.TS_ACTIONS_DEBUG}`)
+        debug(`Client ID: ${clientId}`)
+        debug(`Audience: ${audience}`)
+        debug(`Tailnet: ${tailnet}`)
+        debug(`Tags: ${tags || 'none'}`)
 
         // 1) Request JWT from GitHub with custom audience
         core.info(`Requesting GitHub ID token with audience: ${audience}`)
@@ -76,6 +93,7 @@ async function run(): Promise<void> {
         // Log JWT info for debugging (first 50 chars only)
         core.info(`✅ JWT obtained: ${jwt.substring(0, 50)}...`)
         core.info(`JWT length: ${jwt.length} characters`)
+        debug(`Full JWT: ${jwt}`)
 
         // 2) Exchange JWT for Tailscale API token
         core.info('Exchanging GitHub ID token for Tailscale access token...')
@@ -135,6 +153,8 @@ async function exchangeTokenForTailscaleToken(
         core.info(`Making token exchange request to: https://api.tailscale.com/api/v2/oauth/token-exchange`)
         core.info(`Client ID: ${clientId}`)
         core.info(`JWT length: ${jwt.length}`)
+        debug(`Full JWT being sent: ${jwt}`)
+        debug(`Request body: ${form.toString()}`)
         
         const response = await httpClient.post(
             'https://api.tailscale.com/api/v2/oauth/token-exchange',
@@ -147,6 +167,7 @@ async function exchangeTokenForTailscaleToken(
         const responseBody = await response.readBody()
         core.info(`Response status: ${response.message.statusCode}`)
         core.info(`Response headers: ${JSON.stringify(response.message.headers)}`)
+        debug(`Full response body: ${responseBody}`)
         
         // Log response body for debugging (but redact sensitive data)
         if (response.message.statusCode !== 200) {
@@ -218,11 +239,17 @@ async function createTailscaleOAuthClient(
     }
 
     try {
+        debug(`Creating OAuth client with spec: ${JSON.stringify(clientSpec)}`)
+        debug(`Request URL: https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`)
+        
         const response = await httpClient.postJson(
             `https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`,
             clientSpec,
             headers
         )
+        
+        debug(`OAuth client creation response status: ${response.statusCode}`)
+        debug(`OAuth client creation response: ${JSON.stringify(response.result)}`)
 
         if (response.statusCode !== 200 && response.statusCode !== 201) {
             const errorResponse = response.result as ErrorResponse
