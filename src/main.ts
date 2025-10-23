@@ -1,28 +1,12 @@
 import * as core from '@actions/core'
 import * as http from '@actions/http-client'
 
-// Helper function to check if debug mode is enabled
-function isDebugEnabled(): boolean {
-    return process.env.ACTIONS_STEP_DEBUG === 'true' || 
-           process.env.ACTIONS_STEP_DEBUG === '1' ||
-           core.isDebug() // Also check GitHub Actions native debug mode
-}
-
-// Helper function to log debug information
-function debug(message: string): void {
-    if (isDebugEnabled()) {
-        core.info(`🔍 DEBUG: ${message}`)
-    } else {
-        // Always use core.debug which will show when Actions debug logging is enabled
-        core.debug(message)
-    }
-}
-
 interface TokenExchangeResponse {
     access_token: string
     token_type: string
     expires_in?: number
     scope?: string
+    tags?: string
 }
 
 interface AuthKeyResponse {
@@ -81,11 +65,10 @@ async function run(): Promise<void> {
         const tags = core.getInput('tags')
 
         core.info('Starting Tailscale OAuth authentication flow...')
-        debug(`Debug mode enabled via ACTIONS_STEP_DEBUG=${process.env.ACTIONS_STEP_DEBUG}`)
-        debug(`Client ID: ${clientId}`)
-        debug(`Audience: ${audience}`)
-        debug(`Tailnet: ${tailnet}`)
-        debug(`Tags: ${tags || 'none'}`)
+        core.debug(`Client ID: ${clientId}`)
+        core.debug(`Audience: ${audience}`)
+        core.debug(`Tailnet: ${tailnet}`)
+        core.debug(`Tags: ${tags || 'none'}`)
 
         // 1) Request JWT from GitHub with custom audience
         core.info(`Requesting GitHub ID token with audience: ${audience}`)
@@ -98,31 +81,35 @@ async function run(): Promise<void> {
         // Log JWT info for debugging (first 50 chars only)
         core.info(`✅ JWT obtained: ${jwt.substring(0, 50)}...`)
         core.info(`JWT length: ${jwt.length} characters`)
-        
-        // Use stopCommands to prevent masking for debug output
-        if (isDebugEnabled()) {
-            const token = core.getState('stopCommandsToken') || `debug-${Date.now()}`
-            core.saveState('stopCommandsToken', token)
-            core.info(`::stop-commands::${token}`)
-            core.info(`🔍 DEBUG: Full JWT: ${jwt}`)
-            core.info(`::${token}::`)
-        }
+        core.debug(`Full JWT: ${jwt}`)
 
         // 2) Exchange JWT for Tailscale API token
         core.info('Exchanging GitHub ID token for Tailscale access token...')
-        const accessToken = await exchangeTokenForTailscaleToken(clientId, jwt)
+        const tokenResponse = await exchangeTokenForTailscaleToken(clientId, jwt)
 
         // Mark token as secret and export
-        core.setSecret(accessToken)
-        core.exportVariable('TS_ACCESS_TOKEN', accessToken)
-        core.setOutput('ts-access-token', accessToken)
+        core.setSecret(tokenResponse.access_token)
+        core.exportVariable('TS_ACCESS_TOKEN', tokenResponse.access_token)
+        core.setOutput('ts-access-token', tokenResponse.access_token)
         
         // Output partial token for debugging (first 10 chars only)
-        core.info(`✅ Access token created: ${accessToken.substring(0, 10)}...`)
+        core.info(`✅ Access token created: ${tokenResponse.access_token.substring(0, 10)}...`)
+        
+        // Validate scopes for OAuth client creation
+        const scopes = tokenResponse.scope?.split(' ') || []
+        core.info(`Access token scopes: ${scopes.join(', ')}`)
+        
+        if (!scopes.includes('oauth_keys')) {
+            throw new Error(
+                `Access token is missing required 'oauth_keys' scope. ` +
+                `Current scopes: ${scopes.join(', ')}. ` +
+                `Please update your Tailscale OIDC client configuration to include the 'oauth_keys' scope.`
+            )
+        }
 
         // 3) Create OAuth client
         core.info('Creating Tailscale OAuth client...')
-        const oauthClient = await createTailscaleOAuthClient(accessToken, tailnet, {
+        const oauthClient = await createTailscaleOAuthClient(tokenResponse.access_token, tailnet, {
             tags: tags ? tags.split(',').map(tag => tag.trim()) : undefined
         })
 
@@ -149,7 +136,7 @@ async function run(): Promise<void> {
 async function exchangeTokenForTailscaleToken(
     clientId: string,
     jwt: string
-): Promise<string> {
+): Promise<TokenExchangeResponse> {
     const form = new URLSearchParams({
         client_id: clientId,
         jwt: jwt  // The undocumented API uses 'jwt' not 'subject_token'
@@ -168,34 +155,22 @@ async function exchangeTokenForTailscaleToken(
         core.info(`JWT length: ${jwt.length}`)
         
         const requestBody = form.toString()
-        debug(`Request body length: ${requestBody.length}`)
-        debug(`Content-Type: application/x-www-form-urlencoded`)
+        core.debug(`Request body length: ${requestBody.length}`)
+        core.debug(`Request body: ${requestBody}`)
+        core.debug(`Content-Type: application/x-www-form-urlencoded`)
         
         // Decode the JWT to inspect its structure
         try {
             const jwtParts = jwt.split('.')
-            debug(`JWT parts count: ${jwtParts.length}`)
+            core.debug(`JWT parts count: ${jwtParts.length}`)
             if (jwtParts.length >= 2) {
                 const header = JSON.parse(Buffer.from(jwtParts[0], 'base64').toString())
                 const payload = JSON.parse(Buffer.from(jwtParts[1], 'base64').toString())
-                debug(`JWT header: ${JSON.stringify(header)}`)
-                debug(`JWT payload: ${JSON.stringify(payload)}`)
+                core.debug(`JWT header: ${JSON.stringify(header)}`)
+                core.debug(`JWT payload: ${JSON.stringify(payload)}`)
             }
         } catch (jwtDecodeError) {
-            debug(`Failed to decode JWT: ${jwtDecodeError}`)
-        }
-        
-        // Use stopCommands to prevent masking for debug output
-        if (isDebugEnabled()) {
-            const token = core.getState('stopCommandsToken') || `debug-${Date.now()}`
-            core.saveState('stopCommandsToken', token)
-            core.info(`::stop-commands::${token}`)
-            core.info(`🔍 DEBUG: Full JWT being sent: ${jwt}`)
-            core.info(`🔍 DEBUG: Request body: ${requestBody}`)
-            core.info(`🔍 DEBUG: Comparing to bash: client_id and jwt should be sent as form data`)
-            core.info(`🔍 DEBUG: client_id value: ${clientId}`)
-            core.info(`🔍 DEBUG: jwt parameter name: "jwt" (not "subject_token")`)
-            core.info(`::${token}::`)
+            core.debug(`Failed to decode JWT: ${jwtDecodeError}`)
         }
         
         const requestHeaders = {
@@ -204,7 +179,7 @@ async function exchangeTokenForTailscaleToken(
             'User-Agent': 'configure-tailscale-credentials-action'
         }
         
-        debug(`Request headers: ${JSON.stringify(requestHeaders)}`)
+        core.debug(`Request headers: ${JSON.stringify(requestHeaders)}`)
         
         const response = await httpClient.post(
             'https://api.tailscale.com/api/v2/oauth/token-exchange',
@@ -215,15 +190,7 @@ async function exchangeTokenForTailscaleToken(
         const responseBody = await response.readBody()
         core.info(`Response status: ${response.message.statusCode}`)
         core.info(`Response headers: ${JSON.stringify(response.message.headers)}`)
-        
-        // Use stopCommands to prevent masking for debug output
-        if (isDebugEnabled()) {
-            const token = core.getState('stopCommandsToken') || `debug-${Date.now()}`
-            core.saveState('stopCommandsToken', token)
-            core.info(`::stop-commands::${token}`)
-            core.info(`🔍 DEBUG: Full response body: ${responseBody}`)
-            core.info(`::${token}::`)
-        }
+        core.debug(`Full response body: ${responseBody}`)
         
         // Log response body for debugging (but redact sensitive data)
         if (response.message.statusCode !== 200) {
@@ -254,7 +221,7 @@ async function exchangeTokenForTailscaleToken(
             throw new Error('No access token received from Tailscale')
         }
 
-        return tokenResponse.access_token
+        return tokenResponse
         
     } catch (error) {
         if (error instanceof Error) {
@@ -277,7 +244,7 @@ async function createTailscaleOAuthClient(
 ): Promise<OAuthClientResponse> {
     const clientSpec = {
         keyType: 'client',
-        scopes: ['devices:core', 'auth_keys'],
+        scopes: ['devices:core', 'auth_keys', 'oauth_keys'],
         description: 'GitHub Actions OAuth client',
         ...(options.tags && { tags: options.tags })
     }
@@ -295,8 +262,8 @@ async function createTailscaleOAuthClient(
     }
 
     try {
-        debug(`Creating OAuth client with spec: ${JSON.stringify(clientSpec)}`)
-        debug(`Request URL: https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`)
+        core.debug(`Creating OAuth client with spec: ${JSON.stringify(clientSpec)}`)
+        core.debug(`Request URL: https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`)
         
         const response = await httpClient.postJson(
             `https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`,
@@ -304,8 +271,8 @@ async function createTailscaleOAuthClient(
             headers
         )
         
-        debug(`OAuth client creation response status: ${response.statusCode}`)
-        debug(`OAuth client creation response: ${JSON.stringify(response.result)}`)
+        core.debug(`OAuth client creation response status: ${response.statusCode}`)
+        core.debug(`OAuth client creation response: ${JSON.stringify(response.result)}`)
 
         if (response.statusCode !== 200 && response.statusCode !== 201) {
             const errorResponse = response.result as ErrorResponse

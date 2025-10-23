@@ -27459,22 +27459,6 @@ var __webpack_exports__ = {};
 /* harmony import */ var _actions_http_client__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__nccwpck_require__.n(_actions_http_client__WEBPACK_IMPORTED_MODULE_1__);
 
 
-// Helper function to check if debug mode is enabled
-function isDebugEnabled() {
-    return process.env.ACTIONS_STEP_DEBUG === 'true' ||
-        process.env.ACTIONS_STEP_DEBUG === '1' ||
-        _actions_core__WEBPACK_IMPORTED_MODULE_0__.isDebug(); // Also check GitHub Actions native debug mode
-}
-// Helper function to log debug information
-function debug(message) {
-    if (isDebugEnabled()) {
-        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: ${message}`);
-    }
-    else {
-        // Always use core.debug which will show when Actions debug logging is enabled
-        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(message);
-    }
-}
 async function run() {
     try {
         // Get inputs
@@ -27483,11 +27467,10 @@ async function run() {
         const tailnet = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput('tailnet') || '-';
         const tags = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput('tags');
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Starting Tailscale OAuth authentication flow...');
-        debug(`Debug mode enabled via ACTIONS_STEP_DEBUG=${process.env.ACTIONS_STEP_DEBUG}`);
-        debug(`Client ID: ${clientId}`);
-        debug(`Audience: ${audience}`);
-        debug(`Tailnet: ${tailnet}`);
-        debug(`Tags: ${tags || 'none'}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Client ID: ${clientId}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Audience: ${audience}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Tailnet: ${tailnet}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Tags: ${tags || 'none'}`);
         // 1) Request JWT from GitHub with custom audience
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Requesting GitHub ID token with audience: ${audience}`);
         const jwt = await _actions_core__WEBPACK_IMPORTED_MODULE_0__.getIDToken(audience);
@@ -27497,26 +27480,27 @@ async function run() {
         // Log JWT info for debugging (first 50 chars only)
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`✅ JWT obtained: ${jwt.substring(0, 50)}...`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`JWT length: ${jwt.length} characters`);
-        // Use stopCommands to prevent masking for debug output
-        if (isDebugEnabled()) {
-            const token = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getState('stopCommandsToken') || `debug-${Date.now()}`;
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.saveState('stopCommandsToken', token);
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`::stop-commands::${token}`);
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: Full JWT: ${jwt}`);
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`::${token}::`);
-        }
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Full JWT: ${jwt}`);
         // 2) Exchange JWT for Tailscale API token
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Exchanging GitHub ID token for Tailscale access token...');
-        const accessToken = await exchangeTokenForTailscaleToken(clientId, jwt);
+        const tokenResponse = await exchangeTokenForTailscaleToken(clientId, jwt);
         // Mark token as secret and export
-        _actions_core__WEBPACK_IMPORTED_MODULE_0__.setSecret(accessToken);
-        _actions_core__WEBPACK_IMPORTED_MODULE_0__.exportVariable('TS_ACCESS_TOKEN', accessToken);
-        _actions_core__WEBPACK_IMPORTED_MODULE_0__.setOutput('ts-access-token', accessToken);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.setSecret(tokenResponse.access_token);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.exportVariable('TS_ACCESS_TOKEN', tokenResponse.access_token);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.setOutput('ts-access-token', tokenResponse.access_token);
         // Output partial token for debugging (first 10 chars only)
-        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`✅ Access token created: ${accessToken.substring(0, 10)}...`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`✅ Access token created: ${tokenResponse.access_token.substring(0, 10)}...`);
+        // Validate scopes for OAuth client creation
+        const scopes = tokenResponse.scope?.split(' ') || [];
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Access token scopes: ${scopes.join(', ')}`);
+        if (!scopes.includes('oauth_keys')) {
+            throw new Error(`Access token is missing required 'oauth_keys' scope. ` +
+                `Current scopes: ${scopes.join(', ')}. ` +
+                `Please update your Tailscale OIDC client configuration to include the 'oauth_keys' scope.`);
+        }
         // 3) Create OAuth client
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Creating Tailscale OAuth client...');
-        const oauthClient = await createTailscaleOAuthClient(accessToken, tailnet, {
+        const oauthClient = await createTailscaleOAuthClient(tokenResponse.access_token, tailnet, {
             tags: tags ? tags.split(',').map(tag => tag.trim()) : undefined
         });
         // Mark OAuth client secret as secret and export
@@ -27552,52 +27536,34 @@ async function exchangeTokenForTailscaleToken(clientId, jwt) {
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Client ID: ${clientId}`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`JWT length: ${jwt.length}`);
         const requestBody = form.toString();
-        debug(`Request body length: ${requestBody.length}`);
-        debug(`Content-Type: application/x-www-form-urlencoded`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Request body length: ${requestBody.length}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Request body: ${requestBody}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Content-Type: application/x-www-form-urlencoded`);
         // Decode the JWT to inspect its structure
         try {
             const jwtParts = jwt.split('.');
-            debug(`JWT parts count: ${jwtParts.length}`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`JWT parts count: ${jwtParts.length}`);
             if (jwtParts.length >= 2) {
                 const header = JSON.parse(Buffer.from(jwtParts[0], 'base64').toString());
                 const payload = JSON.parse(Buffer.from(jwtParts[1], 'base64').toString());
-                debug(`JWT header: ${JSON.stringify(header)}`);
-                debug(`JWT payload: ${JSON.stringify(payload)}`);
+                _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`JWT header: ${JSON.stringify(header)}`);
+                _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`JWT payload: ${JSON.stringify(payload)}`);
             }
         }
         catch (jwtDecodeError) {
-            debug(`Failed to decode JWT: ${jwtDecodeError}`);
-        }
-        // Use stopCommands to prevent masking for debug output
-        if (isDebugEnabled()) {
-            const token = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getState('stopCommandsToken') || `debug-${Date.now()}`;
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.saveState('stopCommandsToken', token);
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`::stop-commands::${token}`);
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: Full JWT being sent: ${jwt}`);
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: Request body: ${requestBody}`);
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: Comparing to bash: client_id and jwt should be sent as form data`);
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: client_id value: ${clientId}`);
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: jwt parameter name: "jwt" (not "subject_token")`);
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`::${token}::`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Failed to decode JWT: ${jwtDecodeError}`);
         }
         const requestHeaders = {
             'Content-Type': 'application/x-www-form-urlencoded',
             'Accept': 'application/json',
             'User-Agent': 'configure-tailscale-credentials-action'
         };
-        debug(`Request headers: ${JSON.stringify(requestHeaders)}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Request headers: ${JSON.stringify(requestHeaders)}`);
         const response = await httpClient.post('https://api.tailscale.com/api/v2/oauth/token-exchange', form.toString(), requestHeaders);
         const responseBody = await response.readBody();
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Response status: ${response.message.statusCode}`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Response headers: ${JSON.stringify(response.message.headers)}`);
-        // Use stopCommands to prevent masking for debug output
-        if (isDebugEnabled()) {
-            const token = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getState('stopCommandsToken') || `debug-${Date.now()}`;
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.saveState('stopCommandsToken', token);
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`::stop-commands::${token}`);
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`🔍 DEBUG: Full response body: ${responseBody}`);
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`::${token}::`);
-        }
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Full response body: ${responseBody}`);
         // Log response body for debugging (but redact sensitive data)
         if (response.message.statusCode !== 200) {
             _actions_core__WEBPACK_IMPORTED_MODULE_0__.error(`Full error response: ${responseBody}`);
@@ -27622,7 +27588,7 @@ async function exchangeTokenForTailscaleToken(clientId, jwt) {
         if (!tokenResponse.access_token) {
             throw new Error('No access token received from Tailscale');
         }
-        return tokenResponse.access_token;
+        return tokenResponse;
     }
     catch (error) {
         if (error instanceof Error) {
@@ -27638,7 +27604,7 @@ async function exchangeTokenForTailscaleToken(clientId, jwt) {
 async function createTailscaleOAuthClient(accessToken, tailnet, options) {
     const clientSpec = {
         keyType: 'client',
-        scopes: ['devices:core', 'auth_keys'],
+        scopes: ['devices:core', 'auth_keys', 'oauth_keys'],
         description: 'GitHub Actions OAuth client',
         ...(options.tags && { tags: options.tags })
     };
@@ -27653,11 +27619,11 @@ async function createTailscaleOAuthClient(accessToken, tailnet, options) {
         'Content-Type': 'application/json'
     };
     try {
-        debug(`Creating OAuth client with spec: ${JSON.stringify(clientSpec)}`);
-        debug(`Request URL: https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Creating OAuth client with spec: ${JSON.stringify(clientSpec)}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Request URL: https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`);
         const response = await httpClient.postJson(`https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`, clientSpec, headers);
-        debug(`OAuth client creation response status: ${response.statusCode}`);
-        debug(`OAuth client creation response: ${JSON.stringify(response.result)}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`OAuth client creation response status: ${response.statusCode}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`OAuth client creation response: ${JSON.stringify(response.result)}`);
         if (response.statusCode !== 200 && response.statusCode !== 201) {
             const errorResponse = response.result;
             throw new Error(`OAuth client creation failed (${response.statusCode}): ${errorResponse.message || errorResponse.error || 'Unknown error'}`);
