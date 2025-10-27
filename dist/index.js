@@ -27471,7 +27471,6 @@ async function run() {
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Audience: ${audience}`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Tailnet: ${tailnet}`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Tags: ${tags || 'none'}`);
-        // 1) Request JWT from GitHub with custom audience
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Requesting GitHub ID token with audience: ${audience}`);
         const jwt = await _actions_core__WEBPACK_IMPORTED_MODULE_0__.getIDToken(audience);
         if (!jwt) {
@@ -27479,9 +27478,7 @@ async function run() {
         }
         // Log JWT info for debugging (first 50 chars only)
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`✅ JWT obtained: ${jwt.substring(0, 50)}...`);
-        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`JWT length: ${jwt.length} characters`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Full JWT: ${jwt}`);
-        // 2) Exchange JWT for Tailscale API token
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Exchanging GitHub ID token for Tailscale access token...');
         const tokenResponse = await exchangeTokenForTailscaleToken(clientId, jwt);
         // Mark token as secret and export
@@ -27498,7 +27495,7 @@ async function run() {
                 `Current scopes: ${scopes.join(', ')}. ` +
                 `Please update your Tailscale OIDC client configuration to include the 'oauth_keys' scope.`);
         }
-        // 3) Create OAuth client
+        // Create OAuth client
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Creating Tailscale OAuth client...');
         const oauthClient = await createTailscaleOAuthClient(tokenResponse.access_token, tailnet, {
             tags: tags ? tags.split(',').map(tag => tag.trim()) : undefined
@@ -27562,14 +27559,14 @@ async function exchangeTokenForTailscaleToken(clientId, jwt) {
         const response = await httpClient.post('https://api.tailscale.com/api/v2/oauth/token-exchange', form.toString(), requestHeaders);
         const responseBody = await response.readBody();
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Response status: ${response.message.statusCode}`);
-        _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Response headers: ${JSON.stringify(response.message.headers)}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Response headers: ${JSON.stringify(response.message.headers)}`);
         _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Full response body: ${responseBody}`);
         // Log response body for debugging (but redact sensitive data)
         if (response.message.statusCode !== 200) {
             _actions_core__WEBPACK_IMPORTED_MODULE_0__.error(`Full error response: ${responseBody}`);
         }
         else {
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Response body length: ${responseBody.length}`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Response body length: ${responseBody.length}`);
         }
         if (response.message.statusCode !== 200) {
             let errorMessage = 'Unknown error';

@@ -9,23 +9,6 @@ interface TokenExchangeResponse {
     tags?: string
 }
 
-interface AuthKeyResponse {
-    key: string
-    id: string
-    created: string
-    expires: string
-    capabilities: {
-        devices: {
-            create: {
-                ephemeral: boolean
-                preauthorized: boolean
-                reusable: boolean
-                tags?: string[]
-            }
-        }
-    }
-}
-
 interface OAuthClientResponse {
     id: string
     key: string
@@ -70,7 +53,6 @@ async function run(): Promise<void> {
         core.debug(`Tailnet: ${tailnet}`)
         core.debug(`Tags: ${tags || 'none'}`)
 
-        // 1) Request JWT from GitHub with custom audience
         core.info(`Requesting GitHub ID token with audience: ${audience}`)
         const jwt = await core.getIDToken(audience)
         
@@ -80,10 +62,8 @@ async function run(): Promise<void> {
 
         // Log JWT info for debugging (first 50 chars only)
         core.info(`✅ JWT obtained: ${jwt.substring(0, 50)}...`)
-        core.info(`JWT length: ${jwt.length} characters`)
         core.debug(`Full JWT: ${jwt}`)
 
-        // 2) Exchange JWT for Tailscale API token
         core.info('Exchanging GitHub ID token for Tailscale access token...')
         const tokenResponse = await exchangeTokenForTailscaleToken(clientId, jwt)
 
@@ -107,7 +87,7 @@ async function run(): Promise<void> {
             )
         }
 
-        // 3) Create OAuth client
+        // Create OAuth client
         core.info('Creating Tailscale OAuth client...')
         const oauthClient = await createTailscaleOAuthClient(tokenResponse.access_token, tailnet, {
             tags: tags ? tags.split(',').map(tag => tag.trim()) : undefined
@@ -189,14 +169,14 @@ async function exchangeTokenForTailscaleToken(
 
         const responseBody = await response.readBody()
         core.info(`Response status: ${response.message.statusCode}`)
-        core.info(`Response headers: ${JSON.stringify(response.message.headers)}`)
+        core.debug(`Response headers: ${JSON.stringify(response.message.headers)}`)
         core.debug(`Full response body: ${responseBody}`)
         
         // Log response body for debugging (but redact sensitive data)
         if (response.message.statusCode !== 200) {
             core.error(`Full error response: ${responseBody}`)
         } else {
-            core.info(`Response body length: ${responseBody.length}`)
+            core.debug(`Response body length: ${responseBody.length}`)
         }
 
         if (response.message.statusCode !== 200) {
